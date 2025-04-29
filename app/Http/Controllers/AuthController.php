@@ -107,5 +107,26 @@ class AuthController extends Controller
 
     public function authenticate(Request $request)
     {
+        try {
+            $user = $this->authService->authenticate($request);
+        } catch (AuthenticationException $e) {
+            return response()->json([
+                'message' => 'Error al autenticar',
+                'error' => $e->getMessage(),
+                'status' => 401
+            ], 401);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Error al autenticar',
+                'error' => $e->getMessage(),
+                'status' => 500
+            ], 500);
+        }
+
+        return response()->json([
+            'message' => 'Usuario autenticado exitosamente',
+            'data' => $user,
+            'status' => 200
+        ], 200);
     }
 }

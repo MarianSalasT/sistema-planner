@@ -7,16 +7,17 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use App\Models\User;
-
+use Illuminate\Auth\AuthenticationException;
 
 class AuthService implements AuthServiceInterface
 {
     public function register(array $data)
     {
-        return User::create([
+        $user = User::create([
             'name' => $data['name'],
             'email' => $data['email'],
             'password' => Hash::make($data['password']),
+            'role' => 'user'
         ]);
 
         return $user;
@@ -51,6 +52,14 @@ class AuthService implements AuthServiceInterface
 
     public function authenticate(Request $request)
     {
+        try {
+            $user = Auth::user();
+        } catch (AuthenticationException $e) {
+            throw new AuthenticationException('Usuario no autenticado');
+        } catch (\Exception $e) {
+            throw new AuthenticationException('Error al autenticar');
+        }
 
+        return $user;
     }
 }
