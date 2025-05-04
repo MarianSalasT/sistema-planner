@@ -39,9 +39,7 @@ class BoardService implements BoardServiceInterface
             throw new ModelNotFoundException('Tablero no encontrado');
         }
 
-        if ($board->owner_id !== $user->id && !$board->users->contains($user->id)) {
-            throw new AuthorizationException('No tienes permisos para acceder a este tablero');
-        }
+        $this->checkBoardMember($board, $user);
 
         return $board;
     }
@@ -79,11 +77,14 @@ class BoardService implements BoardServiceInterface
             throw new ModelNotFoundException('Tablero no encontrado');
         }
 
-        if ($board->owner_id !== $user->id && !$board->users()->where('user_id', $user->id)->where('board_user.role', 'owner')->exists()) {
-            throw new AuthorizationException('No tienes permisos para actualizar este tablero');
+        $this->checkBoardPermissions($board, $user);
+
+        // Solo actualizar si hay datos para actualizar
+        if (!empty($data)) {
+            $board->update($data);
         }
 
-        $board->update($data);
+        $board->refresh();
 
         return $board->load(['owner', 'users', 'columns.cards']);
     }
@@ -102,9 +103,7 @@ class BoardService implements BoardServiceInterface
             throw new ModelNotFoundException('Tablero no encontrado');
         }
 
-        if ($board->owner_id !== $user->id && !$board->users()->where('user_id', $user->id)->where('board_user.role', 'owner')->exists()) {
-            throw new AuthorizationException('No tienes permisos para eliminar este tablero');
-        }
+        $this->checkBoardPermissions($board, $user);
 
         $board->delete();
 
@@ -149,11 +148,42 @@ class BoardService implements BoardServiceInterface
             throw new ModelNotFoundException('Tablero no encontrado');
         }
 
-        if ($board->owner_id !== $user->id && !$board->users()->where('user_id', $user->id)->where('board_user.role', 'owner')->exists()) {
-            throw new AuthorizationException('No tienes permisos para agregar miembros a este tablero');
+        $this->checkBoardPermissions($board, $user);
+
+        if ($board->users()->where('user_id', $data['user_id'])->exists()) {
+            throw new ModelNotFoundException('El usuario ya es miembro de este tablero');
         }
         
         $board->users()->attach($data['user_id'], ['role' => $data['role']]);
+
+        return $board->load(['owner', 'users', 'columns.cards']);
+    }
+
+    public function updateMemberRole($boardId, array $data)
+    {
+        $user = Auth::user();
+
+        if (!$user) {
+            throw new AuthenticationException('Usuario no autenticado');
+        }
+
+        $board = Board::with(['owner', 'users', 'columns.cards'])->find($boardId);
+
+        if (!$board) {
+            throw new ModelNotFoundException('Tablero no encontrado');
+        }
+
+        $this->checkBoardPermissions($board, $user);
+
+        if (!$board->users()->where('user_id', $data['user_id'])->exists()) {
+            throw new ModelNotFoundException('El usuario no es miembro de este tablero');
+        }
+
+        if ($board->owner_id === $data['user_id']) {
+            throw new AuthorizationException('No puedes cambiar el rol del creador del tablero');
+        }
+
+        $board->users()->updateExistingPivot($data['user_id'], ['role' => $data['role']]);
 
         return $board->load(['owner', 'users', 'columns.cards']);
     }
@@ -172,12 +202,96 @@ class BoardService implements BoardServiceInterface
             throw new ModelNotFoundException('Tablero no encontrado');
         }
 
-        if ($board->owner_id !== $user->id && !$board->users()->where('user_id', $user->id)->where('board_user.role', 'owner')->exists()) {
-            throw new AuthorizationException('No tienes permisos para eliminar miembros de este tablero');
+        $this->checkBoardPermissions($board, $user);
+
+        if (!$board->users()->where('user_id', $userId)->exists()) {
+            throw new ModelNotFoundException('El usuario no es miembro de este tablero');
         }
 
         $board->users()->detach($userId);
 
         return $board->load(['owner', 'users', 'columns.cards']);
+    }
+
+    public function restoreBoard($id)
+    {
+        $user = Auth::user();
+
+        if (!$user) {
+            throw new AuthenticationException('Usuario no autenticado');
+        }
+
+        $board = Board::with(['owner', 'users', 'columns.cards'])->withTrashed()->find($id);
+
+        if (!$board) {
+            throw new ModelNotFoundException('Tablero no encontrado');
+        }
+
+        $this->checkBoardPermissions($board, $user);
+
+        $board->restore();
+
+        return $board->load(['owner', 'users', 'columns.cards']);
+    }
+
+    public function forceDeleteBoard($id)
+    {
+        $user = Auth::user();
+
+        if (!$user) {
+            throw new AuthenticationException('Usuario no autenticado');
+        }
+
+        $board = Board::with(['owner', 'users', 'columns.cards'])->withTrashed()->find($id);
+
+        if (!$board) {
+            throw new ModelNotFoundException('Tablero no encontrado');
+        }
+
+        $this->checkBoardPermissions($board, $user);
+
+        $board->forceDelete();
+
+        return $board;
+    }
+
+    public function getDeletedBoards()
+    {
+        $user = Auth::user();
+
+        if (!$user) {
+            throw new AuthenticationException('Usuario no autenticado');
+        }
+
+        if ($user->role !== 'admin') {
+            throw new AuthorizationException('No tienes permisos de administrador para acceder a esta información');
+        }
+
+        return Board::with(['owner', 'users', 'columns.cards'])->onlyTrashed()->get();
+    }
+
+    public function getMyDeletedBoards()
+    {
+        $user = Auth::user();
+
+        if (!$user) {
+            throw new AuthenticationException('Usuario no autenticado');
+        }
+
+        return $user->boards()->with(['owner', 'users', 'columns.cards'])->onlyTrashed()->get();
+    }
+
+    private function checkBoardPermissions($board, $user)
+    {
+        if ($board->owner_id !== $user->id && !$board->users()->where('user_id', $user->id)->where('board_user.role', 'owner')->exists()) {
+            throw new AuthorizationException('No tienes permisos para acceder a este tablero');
+        }
+    }
+
+    private function checkBoardMember($board, $user)
+    {
+        if (!$board->users()->where('user_id', $user->id)->exists()) {
+            throw new AuthorizationException('No tienes permisos para acceder a este tablero');
+        }
     }
 } 
