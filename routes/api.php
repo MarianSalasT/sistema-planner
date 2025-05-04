@@ -17,6 +17,9 @@ Route::middleware('auth:sanctum')->group(function () {
         return $request->user();
     });
 
+    Route::get('boards/my-boards', [BoardController::class, 'getMyBoards'])->name('boards.getMyBoards');
+    Route::post('boards/{board}/add-member', [BoardController::class, 'addMember'])->name('boards.addMember');
+    Route::post('boards/{board}/remove-member', [BoardController::class, 'removeMember'])->name('boards.removeMember');
     Route::apiResource('boards', BoardController::class);
 
     Route::apiResource('columns', ColumnController::class);
